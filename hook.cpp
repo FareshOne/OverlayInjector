@@ -1,3 +1,4 @@
+#include "OverlayUI.h"
 #include <Windows.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
@@ -8,7 +9,6 @@
 #include "imgui_impl_dx12.h"
 #include "MinHook.h"
 #include "TokenScanner.h"
-#include "OverlayUI.h"
 
 typedef HRESULT(__stdcall* PresentFn)(IDXGISwapChain* swapChain, UINT SyncInterval, UINT Flags);
 PresentFn oPresent = nullptr;
@@ -20,37 +20,33 @@ HWND g_hwnd = nullptr;
 
 bool showOverlay = true;
 
-HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
-    static bool initialized = false;
-
-    if (!initialized) {
-        // Standard ImGui DX12 setup...
-        DXGI_SWAP_CHAIN_DESC desc;
-        pSwapChain->GetDesc(&desc);
-        HWND hwnd = desc.OutputWindow;
-
-        // Get device + command queue
-        ID3D12Device* pDevice = nullptr;
-        if (FAILED(pSwapChain->GetDevice(__uuidof(ID3D12Device), (void**)&pDevice))) {
-            return ((PresentFn)oPresent)(pSwapChain, SyncInterval, Flags);
-        }
-
-        // ImGui init
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-        ImGui_ImplWin32_Init(hwnd);
-        ImGui_ImplDX12_Init(pDevice, 3,
-            DXGI_FORMAT_R8G8B8A8_UNORM,
-            g_pd3dSrvDescHeap,
-            g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart(),
-            g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart());
-
-            initialized = true;
-        }
+HRESULT __stdcall hkPresent(IDXGISwapChain3* pSwapChain, UINT SyncInterval, UINT Flags)
+{
+    if (!g_Initialized)
+    {
+        if (FAILED(Initialize(pSwapChain)))
+            return oPresent(pSwapChain, SyncInterval, Flags);
+        g_Initialized = true;
     }
 
+    // Start the ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    // Render the overlay UI
+    RenderOverlayUI();
+
+    // Rendering
+    ImGui::Render();
+    g_CommandList->Reset(g_CommandAllocator, nullptr);
+    g_CommandList->SetDescriptorHeaps(1, &g_SrvDescHeap);
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_CommandList);
+    g_CommandList->Close();
+    g_CommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList* const*>(&g_CommandList));
+
+    return oPresent(pSwapChain, SyncInterval, Flags);
+}
     // Start new ImGui frame
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
