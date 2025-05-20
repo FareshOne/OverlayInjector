@@ -4,6 +4,10 @@
 #include "extern/MinHook/include/MinHook.h"
 #include "TokenScanner.h"
 #include "NetHook.h"
+#include "LogSystem.h"
+
+LogSystem g_log;
+
 
 // Forward declarations (only declare, don't define here)
 extern void CreateHookForPresent();

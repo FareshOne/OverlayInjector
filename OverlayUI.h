@@ -1,3 +1,6 @@
 #pragma once
-extern bool g_ShowMenu;
-void HandleOverlayUI();
+#include <vector>
+#include <string>
+
+// Renders the overlay each frame; toggle with VK_INSERT
+void RenderOverlayUI();

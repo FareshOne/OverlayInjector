@@ -8,6 +8,7 @@
 #include "imgui_impl_dx12.h"
 #include "MinHook.h"
 #include "TokenScanner.h"
+#include "OverlayUI.h"
 
 typedef HRESULT(__stdcall* PresentFn)(IDXGISwapChain* swapChain, UINT SyncInterval, UINT Flags);
 PresentFn oPresent = nullptr;
@@ -19,44 +20,44 @@ HWND g_hwnd = nullptr;
 
 bool showOverlay = true;
 
-HRESULT __stdcall hkPresent
-(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
+HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
     static bool initialized = false;
 
-    // Handle toggle
-    if (GetAsyncKeyState(VK_INSERT) & 1) {
-        showOverlay = !showOverlay;
-    }
-
-
     if (!initialized) {
+        // Standard ImGui DX12 setup...
         DXGI_SWAP_CHAIN_DESC desc;
         pSwapChain->GetDesc(&desc);
-        g_hwnd = desc.OutputWindow;
+        HWND hwnd = desc.OutputWindow;
 
-        if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D12Device), (void**)&g_device))) {
-            ImGui::CreateContext();
-            ImGui_ImplWin32_Init(g_hwnd);
+        // Get device + command queue
+        ID3D12Device* pDevice = nullptr;
+        if (FAILED(pSwapChain->GetDevice(__uuidof(ID3D12Device), (void**)&pDevice))) {
+            return ((PresentFn)oPresent)(pSwapChain, SyncInterval, Flags);
+        }
 
-            D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-            heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-            heapDesc.NumDescriptors = 1;
-            heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-            g_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&g_descHeap));
+        // ImGui init
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-            ImGui_ImplDX12_Init(g_device, 3,
-                DXGI_FORMAT_R8G8B8A8_UNORM,
-                g_descHeap,
-                g_descHeap->GetCPUDescriptorHandleForHeapStart(),
-                g_descHeap->GetGPUDescriptorHandleForHeapStart());
+        ImGui_ImplWin32_Init(hwnd);
+        ImGui_ImplDX12_Init(pDevice, 3,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            g_pd3dSrvDescHeap,
+            g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart(),
+            g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart());
 
             initialized = true;
         }
     }
 
+    // Start new ImGui frame
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+    
+     // 🟢 Render the token overlay here
+    RenderOverlayUI();
 
     if (showOverlay) {
         ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
@@ -70,6 +71,8 @@ HRESULT __stdcall hkPresent
 
     ImGui::Render();
 ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), /*cmd list*/ nullptr);
+ID3D12CommandQueue* pCommandQueue = GetCommandQueueFromSwapChain(pSwapChain);
+ID3D12GraphicsCommandList* pCommandList = GetCommandList();
 
 // Hook present once (on first frame)
 if (!oPresent) {
