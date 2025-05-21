@@ -1,6 +1,4 @@
 #pragma once
-#include <vector>
-#include <string>
 
-// Renders the overlay each frame; toggle with VK_INSERT
+// Toggles and renders the overlay UI
 void RenderOverlayUI();

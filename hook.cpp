@@ -1,99 +1,57 @@
-#include "OverlayUI.h"
 #include <Windows.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
-#include <dwrite.h>
-#include <winhttp.h>
+#include "Globals.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
-#include "MinHook.h"
-#include "TokenScanner.h"
+#include "OverlayUI.h"
 
-typedef HRESULT(__stdcall* PresentFn)(IDXGISwapChain* swapChain, UINT SyncInterval, UINT Flags);
-PresentFn oPresent = nullptr;
+// Detour for IDXGISwapChain::Present
+HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain,
+    UINT SyncInterval, UINT Flags) {
+    static bool initialized = false;
+    static ID3D12DescriptorHeap* descHeap = nullptr;
+    static ID3D12Device* device = nullptr;
 
-ID3D12Device* g_device = nullptr;
-ID3D12DescriptorHeap* g_descHeap = nullptr;
-HWND g_hwnd = nullptr;
+    if (!initialized) {
+        DXGI_SWAP_CHAIN_DESC desc;
+        pSwapChain->GetDesc(&desc);
+        HWND hwnd = desc.OutputWindow;
 
+        pSwapChain->GetDevice(__uuidof(device), reinterpret_cast<void**>(&device));
 
-bool showOverlay = true;
+        // Setup ImGui
+        ImGui::CreateContext();
+        ImGui_ImplWin32_Init(hwnd);
 
-HRESULT __stdcall hkPresent(IDXGISwapChain3* pSwapChain, UINT SyncInterval, UINT Flags)
-{
-    if (!g_Initialized)
-    {
-        if (FAILED(Initialize(pSwapChain)))
-            return oPresent(pSwapChain, SyncInterval, Flags);
-        g_Initialized = true;
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        heapDesc.NumDescriptors = 1;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&descHeap));
+
+        ImGui_ImplDX12_Init(device, 1,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            descHeap,
+            descHeap->GetCPUDescriptorHandleForHeapStart(),
+            descHeap->GetGPUDescriptorHandleForHeapStart());
+
+        initialized = true;
     }
 
-    // Start the ImGui frame
+    // Start frame
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
-    // Render the overlay UI
+    // Render overlay UI
     RenderOverlayUI();
 
-    // Rendering
     ImGui::Render();
-    g_CommandList->Reset(g_CommandAllocator, nullptr);
-    g_CommandList->SetDescriptorHeaps(1, &g_SrvDescHeap);
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_CommandList);
-    g_CommandList->Close();
-    g_CommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList* const*>(&g_CommandList));
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(),
+        nullptr);
 
+    // Call original Present
     return oPresent(pSwapChain, SyncInterval, Flags);
-}
-    // Start new ImGui frame
-    ImGui_ImplDX12_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-    
-     // 🟢 Render the token overlay here
-    RenderOverlayUI();
-
-    if (showOverlay) {
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
-        ImGui::Begin("Token Alert", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize);
-        ImGui::Text("⚠️ Token Detected: sk-...****");
-        ImGui::End();
-    }(ImVec2(10, 10), ImGuiCond_Always);
-    ImGui::Begin("Token Alert", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize);
-    ImGui::Text("⚠️ Token Detected: sk-...****");
-    ImGui::End();
-
-    ImGui::Render();
-ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), /*cmd list*/ nullptr);
-ID3D12CommandQueue* pCommandQueue = GetCommandQueueFromSwapChain(pSwapChain);
-ID3D12GraphicsCommandList* pCommandList = GetCommandList();
-
-// Hook present once (on first frame)
-if (!oPresent) {
-    void** vtable = *reinterpret_cast<void***>(pSwapChain);
-    MH_CreateHook(vtable[8], hkPresent, reinterpret_cast<void**>(&oPresent));
-    MH_EnableHook(vtable[8]);
-}
-
-    return oPresent(pSwapChain, SyncInterval, Flags);
-}
-
-typedef BOOL(WINAPI* WinHttpWriteDataFn)(HINTERNET, LPCVOID, DWORD, LPDWORD);
-WinHttpWriteDataFn oWinHttpWriteData = nullptr;
-
-TokenScanner g_scanner;
-
-BOOL WINAPI hkWinHttpWriteData(HINTERNET hRequest, LPCVOID lpBuffer, DWORD dwNumberOfBytesToWrite, LPDWORD lpdwNumberOfBytesWritten) {
-    std::string body((const char*)lpBuffer, dwNumberOfBytesToWrite);
-    auto matches = g_scanner.Scan(body);
-
-    if (!matches.empty()) {
-        for (const auto& m : matches)
-            OutputDebugStringA(("Token Detected: " + m + "\n").c_str());
-        // Optionally send to overlay buffer here
-    }
-
-    return oWinHttpWriteData(hRequest, lpBuffer, dwNumberOfBytesToWrite, lpdwNumberOfBytesWritten);
 }

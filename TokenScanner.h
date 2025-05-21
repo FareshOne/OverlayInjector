@@ -1,7 +1,7 @@
-#pragma once
+﻿#pragma once
 #include <string>
 #include <vector>
-#include <regex>
+#include <regex>   // ← Add this to define std::regex
 
 class TokenScanner {
 public:

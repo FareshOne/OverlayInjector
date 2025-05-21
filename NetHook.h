@@ -1,6 +1,19 @@
-#pragma once
+﻿#pragma once
+#include <winhttp.h>
 
-typedef BOOL(WINAPI* WinHttpWriteDataFn)(HINTERNET, LPCVOID, DWORD, LPDWORD);
+// Define the function pointer type
+using WinHttpWriteDataFn = BOOL(WINAPI*)(
+    HINTERNET, LPCVOID, DWORD, LPDWORD
+    );
 
+// Extern declarations
 extern WinHttpWriteDataFn oWinHttpWriteData;
-extern BOOL WINAPI hkWinHttpWriteData(HINTERNET, LPCVOID, DWORD, LPDWORD);
+extern BOOL WINAPI hkWinHttpWriteData(
+    HINTERNET hRequest,
+    LPCVOID lpBuffer,
+    DWORD dwBytesToWrite,
+    LPDWORD lpdwBytesWritten
+);
+
+// Initializes HTTP hooks
+void SetupNetHooks();

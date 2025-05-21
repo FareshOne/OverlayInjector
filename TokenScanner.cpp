@@ -1,9 +1,10 @@
 #include "TokenScanner.h"
+#include <regex>
 
 TokenScanner::TokenScanner() {
-    tokenPatterns.emplace_back(R"(sk-[a-zA-Z0-9]{20,})");
-    tokenPatterns.emplace_back(R"(pk-[a-zA-Z0-9]{20,})");
-    tokenPatterns.emplace_back(R"(Bearer\s+[a-zA-Z0-9\-_\.=]+)");
+    tokenPatterns.emplace_back(R"(sk-[A-Za-z0-9]{20,})");
+    tokenPatterns.emplace_back(R"(pk-[A-Za-z0-9]{20,})");
+    tokenPatterns.emplace_back(R"(Bearer\s+[A-Za-z0-9\-\._=]+)");
 }
 
 std::vector<std::string> TokenScanner::Scan(const std::string& body) {

@@ -1,31 +1,22 @@
 #include <Windows.h>
-#include <d3d12.h>
-#include <dxgi1_4.h>
-#include "extern/MinHook/include/MinHook.h"
-#include "TokenScanner.h"
+#include <MinHook.h>
+#include "DXHookHelper.h"
 #include "NetHook.h"
-#include "LogSystem.h"
+#include "OverlayUI.h"
 
-LogSystem g_log;
-
-
-// Forward declarations (only declare, don't define here)
+// Forward-declare the Present hook installer
 extern void CreateHookForPresent();
-
-void SetupHooks() {
-    MH_Initialize();
-
-    // DX12 overlay hook
-    CreateHookForPresent();
-
-    // Net hooks (WinHttp etc.)
-    SetupNetHooks();
-}
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(hModule);
-        SetupHooks();
+        MH_Initialize();
+
+        // Install DX12 Present hook
+        CreateHookForPresent();
+
+        // Install WinHttpWriteData hook
+        SetupNetHooks();
     }
     return TRUE;
 }
